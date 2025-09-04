@@ -3,64 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clark County Fire Dept. Status Board</title>
+    <title>Clark County Fire Department - Status Board</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Simple animation for the spinner */
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .animate-spin {
-            animation: spin 1s linear infinite;
-        }
-        /* Style for the custom confirm modal */
-        .confirm-modal-button {
-            transition: background-color 0.2s;
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin { animation: spin 1s linear infinite; }
+        .confirm-modal-button { transition: background-color 0.2s; }
     </style>
 </head>
 <body class="bg-gray-200 dark:bg-gray-900 font-sans">
-
     <header class="bg-red-700 shadow-lg">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-            <h1 class="text-3xl font-bold text-white">Clark County Fire Dept. Status Board</h1>
+        <div class="container mx-auto px-4 py-4">
+            <h1 class="text-3xl font-bold text-center text-white">Clark County Fire/EMS Status Board</h1>
         </div>
     </header>
 
     <main id="app-container" class="container mx-auto p-4 md:p-8">
-        <!-- Error message for missing Firebase config -->
         <div id="error-container" class="hidden bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4" role="alert">
             <p class="font-bold">Configuration Needed</p>
             <p id="error-message"></p>
         </div>
 
-        <!-- Loading Spinner -->
         <div id="spinner-container" class="flex justify-center items-center h-full py-16">
             <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-red-600"></div>
         </div>
         
-        <!-- Main app content -->
         <div id="content-container" class="hidden">
-            <!-- Add Station Form will be injected here -->
-            <div id="add-station-form-container"></div>
-            <!-- Stations will be injected here -->
-            <div id="stations-container"></div>
+            <div id="add-station-form-container" class="mb-8 bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+                <form id="add-station-form" class="flex flex-col sm:flex-row gap-4 items-end">
+                    <div class="flex-grow w-full">
+                        <label for="station-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300">New Station Name</label>
+                        <input type="text" id="station-name" name="stationName" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 shadow-sm focus:border-red-500 focus:ring-red-500 bg-white dark:bg-gray-700 dark:text-gray-200" placeholder="e.g., Station 12" required>
+                    </div>
+                    <button type="submit" class="w-full sm:w-auto bg-red-600 text-white font-bold py-2 px-6 rounded-md hover:bg-red-700 transition-colors">Add Station</button>
+                </form>
+            </div>
+            
+            <div id="stations-container" class="space-y-8">
+                <!-- Stations will be injected here -->
+            </div>
         </div>
     </main>
 
-    <!-- Generic Modal for adding crews -->
+    <!-- Modals -->
     <div id="add-crew-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 w-full max-w-md relative">
             <button id="add-crew-modal-close" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
             <div id="add-crew-modal-content"></div>
         </div>
     </div>
-
-    <!-- Generic Modal for confirmation dialogs -->
     <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 z-50 justify-center items-center p-4">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 w-full max-w-sm text-center">
             <p id="confirm-modal-message" class="text-lg mb-6 dark:text-gray-200"></p>
@@ -77,7 +70,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     
     <script>
-        // --- !!! IMPORTANT !!! ---
         const firebaseConfig = {
           apiKey: "AIzaSyAaCahDa2xTO_ukTIhR3KLUCWPUI4dBd-o",
           authDomain: "clark-county-fire-status.firebaseapp.com",
@@ -88,30 +80,24 @@
           measurementId: "G-GBBK5WTWR9"
         };
 
-        // --- Global State & DOM References ---
-        let db;
-        let auth;
-        let stationsData = [];
-        let firestoreUnsubscribe = null;
+        let db, auth;
 
         const spinner = document.getElementById('spinner-container');
         const errorContainer = document.getElementById('error-container');
         const errorMessage = document.getElementById('error-message');
         const contentContainer = document.getElementById('content-container');
-        const addStationFormContainer = document.getElementById('add-station-form-container');
+        const addStationForm = document.getElementById('add-station-form');
         const stationsContainer = document.getElementById('stations-container');
         
         const addCrewModal = document.getElementById('add-crew-modal');
         const addCrewModalContent = document.getElementById('add-crew-modal-content');
         const addCrewModalClose = document.getElementById('add-crew-modal-close');
-
         const confirmModal = document.getElementById('confirm-modal');
         const confirmModalMessage = document.getElementById('confirm-modal-message');
         const confirmModalCancel = document.getElementById('confirm-modal-cancel');
         const confirmModalConfirm = document.getElementById('confirm-modal-confirm');
+        let currentAddCrewStationId = null;
 
-        // --- Helper Functions ---
-        
         function showError(message) {
             spinner.classList.add('hidden');
             errorMessage.textContent = message;
@@ -119,57 +105,171 @@
             contentContainer.classList.add('hidden');
         }
 
-        function listenToFirestore() {
-            // If we're already listening, don't subscribe again
-            if (firestoreUnsubscribe) return;
-
-            const stationsCollection = db.collection("stations");
-            firestoreUnsubscribe = stationsCollection.onSnapshot((snapshot) => {
-                stationsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                renderStations();
-            }, err => {
-                console.error("Error fetching stations:", err);
-                showError("Could not fetch data from the database. This is likely a permissions issue. Make sure your Firestore rules are public or enable anonymous authentication.");
-            });
+        function renderStations(stations) {
+            spinner.classList.add('hidden');
+            contentContainer.classList.remove('hidden');
+            stations.sort((a, b) => a.name.localeCompare(b.name));
+            stationsContainer.innerHTML = stations.map(station => createStationHTML(station)).join('');
         }
 
-        function stopListeningToFirestore() {
-            if (firestoreUnsubscribe) {
-                firestoreUnsubscribe();
-                firestoreUnsubscribe = null;
-            }
+        function createStationHTML(station) {
+            const totalEMS = station.crews.filter(c => c.status === 'On Duty').reduce((sum, c) => sum + (c.emsPersonnel || 0), 0);
+            const totalFire = station.crews.filter(c => c.status === 'On Duty').reduce((sum, c) => sum + (c.firePersonnel || 0), 0);
+            return `
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden">
+                    <div class="p-4 bg-gray-900 text-white flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">${station.name}</h2>
+                        <div class="flex gap-2">
+                           <button data-action="open-add-crew-modal" data-station-id="${station.id}" class="bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors">+ Add Crew</button>
+                           <button data-action="delete-station" data-station-id="${station.id}" data-station-name="${station.name}" class="bg-red-800 text-white font-bold p-2 rounded-md hover:bg-red-900 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg></button>
+                        </div>
+                    </div>
+                    <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-100 dark:bg-gray-700 border-b-4 border-red-600">
+                        <div class="bg-blue-100 dark:bg-blue-900 p-3 rounded-lg text-center">
+                            <p class="text-lg font-semibold text-blue-800 dark:text-blue-200">Total EMS On Duty</p>
+                            <p class="text-4xl font-bold text-blue-900 dark:text-blue-100">${totalEMS}</p>
+                        </div>
+                        <div class="bg-orange-100 dark:bg-orange-900 p-3 rounded-lg text-center">
+                            <p class="text-lg font-semibold text-orange-800 dark:text-orange-200">Total Fire On Duty</p>
+                            <p class="text-4xl font-bold text-orange-900 dark:text-orange-100">${totalFire}</p>
+                        </div>
+                    </div>
+                     <div class="p-2 md:p-4">
+                        <div class="hidden md:grid grid-cols-12 gap-2 font-bold text-sm text-gray-600 dark:text-gray-300 p-3">
+                            <div class="col-span-4">Crew</div>
+                            <div class="col-span-2 text-center">Status</div>
+                            <div class="col-span-2 text-center">EMS</div>
+                            <div class="col-span-2 text-center">Fire</div>
+                            <div class="col-span-2 text-center">Actions</div>
+                        </div>
+                        ${station.crews.length > 0 ? station.crews.sort((a,b) => a.name.localeCompare(b.name)).map(crew => createCrewRowHTML(station.id, crew)).join('') : '<p class="p-4 text-center text-gray-500 dark:text-gray-400">No crews assigned to this station yet.</p>'}
+                    </div>
+                </div>`;
+        }
+        
+        function createCrewRowHTML(stationId, crew) {
+            const statusButtonClass = crew.status === 'On Duty' 
+                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                : 'bg-gray-500 hover:bg-gray-600 text-white';
+            const personnelButtonClasses = "bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 font-bold h-8 w-8 rounded-full hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors flex items-center justify-center";
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center p-3 border-b border-gray-200 dark:border-gray-700" data-crew-id="${crew.id}" data-station-id="${stationId}">
+                    <div class="md:col-span-4 font-bold text-gray-800 dark:text-gray-100">${crew.name}</div>
+                    <div class="md:col-span-2">
+                        <button data-action="toggle-status" class="w-full font-semibold py-2 px-3 rounded-md transition-colors disabled:opacity-50 ${statusButtonClass}">${crew.status}</button>
+                    </div>
+                    <div class="md:col-span-2 flex items-center justify-center space-x-2">
+                        <button data-action="decrement" data-field="ems" class="${personnelButtonClasses}">-</button>
+                        <span class="w-8 text-center font-semibold text-lg dark:text-gray-200">${crew.emsPersonnel}</span>
+                        <button data-action="increment" data-field="ems" class="${personnelButtonClasses}">+</button>
+                    </div>
+                    <div class="md:col-span-2 flex items-center justify-center space-x-2">
+                        <button data-action="decrement" data-field="fire" class="${personnelButtonClasses}">-</button>
+                        <span class="w-8 text-center font-semibold text-lg dark:text-gray-200">${crew.firePersonnel}</span>
+                        <button data-action="increment" data-field="fire" class="${personnelButtonClasses}">+</button>
+                    </div>
+                    <div class="md:col-span-2 flex justify-center">
+                        <button data-action="delete-crew" data-crew-name="${crew.name}" class="bg-red-600 text-white font-semibold p-2 rounded-md hover:bg-red-700"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg></button>
+                    </div>
+                </div>
+            `;
         }
 
-        // --- UI Functions ---
+        async function handleAddStation(e) {
+            e.preventDefault();
+            const stationName = e.target.stationName.value.trim();
+            if (!stationName) return;
+            const newStation = { name: stationName, crews: [], id: `station-${Date.now()}` };
+            try {
+                await db.collection("stations").add({ name: newStation.name, crews: newStation.crews });
+                addStationForm.reset();
+            } catch (error) { console.error("Error adding station: ", error); }
+        }
 
-        function openAddCrewModal(station) {
-             addCrewModalContent.innerHTML = `
-                <h3 class="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">Add New Crew to ${station.name}</h3>
-                <form id="add-crew-form" data-station-id="${station.id}">
-                    <input
-                        type="text"
-                        name="crewName"
-                        placeholder="e.g., Engine 1, Medic 5"
-                        class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-green-500 focus:outline-none"
-                        required
-                        autofocus
-                    />
+        async function handleAddCrew(e) {
+            e.preventDefault();
+            const form = e.target;
+            const newCrewName = form.crewName.value.trim();
+            if (!newCrewName || !currentAddCrewStationId) return;
+
+            form.querySelector('button[type="submit"]').disabled = true;
+            const newCrew = { name: newCrewName, status: 'Off Duty', emsPersonnel: 0, firePersonnel: 0, id: `crew-${Date.now()}`, lastUpdated: new Date().toISOString() };
+            const stationRef = db.collection("stations").doc(currentAddCrewStationId);
+            try {
+                await stationRef.update({ crews: firebase.firestore.FieldValue.arrayUnion(newCrew) });
+                closeAddCrewModal();
+            } catch (error) { console.error("Error adding crew: ", error); }
+        }
+        
+        async function handleCrewAction(e) {
+            const button = e.target;
+            const action = button.dataset.action;
+            if (!action) return;
+
+            const crewRow = button.closest('[data-crew-id]');
+            const stationId = crewRow.dataset.stationId;
+            const crewId = crewRow.dataset.crewId;
+            const stationRef = db.collection("stations").doc(stationId);
+            
+            button.disabled = true;
+
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const stationDoc = await transaction.get(stationRef);
+                    if (!stationDoc.exists) throw "Station not found.";
+
+                    let crews = stationDoc.data().crews;
+                    const crewIndex = crews.findIndex(c => c.id === crewId);
+                    if (crewIndex === -1) throw "Crew not found.";
+
+                    const field = button.dataset.field;
+
+                    if (action === 'toggle-status') {
+                        const newStatus = crews[crewIndex].status === 'On Duty' ? 'Off Duty' : 'On Duty';
+                        crews[crewIndex].status = newStatus;
+                        crews[crewIndex].lastUpdated = new Date().toISOString();
+                    } else if (action === 'increment') {
+                        crews[crewIndex][`${field}Personnel`]++;
+                        crews[crewIndex].lastUpdated = new Date().toISOString();
+                    } else if (action === 'decrement') {
+                        if (crews[crewIndex][`${field}Personnel`] > 0) {
+                            crews[crewIndex][`${field}Personnel`]--;
+                            crews[crewIndex].lastUpdated = new Date().toISOString();
+                        }
+                    } else if (action === 'delete-crew') {
+                        const crewName = button.dataset.crewName;
+                        showConfirmModal(`Delete crew "${crewName}"?`, async () => {
+                            const newCrews = stationDoc.data().crews.filter(c => c.id !== crewId);
+                            await stationRef.update({ crews: newCrews });
+                        });
+                        return;
+                    }
+                    transaction.update(stationRef, { crews: crews });
+                });
+            } catch (err) { console.error(`Error on action ${action}:`, err); }
+        }
+
+        function openAddCrewModal(stationId) {
+            currentAddCrewStationId = stationId;
+            addCrewModalContent.innerHTML = `
+                <h3 class="text-xl font-bold mb-4 dark:text-gray-100">Add New Crew</h3>
+                <form id="add-crew-form">
+                    <input type="text" name="crewName" placeholder="e.g., Engine 12" class="w-full p-2 border rounded-md dark:bg-gray-700 dark:text-gray-200" required autofocus/>
                     <div class="flex justify-end gap-2 mt-4">
-                        <button type="button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-600 transition-colors" data-action="close-add-crew-modal">Cancel</button>
-                        <button type="submit" class="bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors disabled:bg-green-400">
-                            Add Crew
-                        </button>
+                        <button type="button" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-600" id="cancel-add-crew">Cancel</button>
+                        <button type="submit" class="bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700">Add Crew</button>
                     </div>
                 </form>
             `;
             addCrewModal.classList.remove('hidden');
             addCrewModal.classList.add('flex');
+            document.getElementById('cancel-add-crew').addEventListener('click', closeAddCrewModal);
         }
 
         function closeAddCrewModal() {
             addCrewModal.classList.add('hidden');
             addCrewModal.classList.remove('flex');
-            addCrewModalContent.innerHTML = '';
+            currentAddCrewStationId = null;
         }
 
         function showConfirmModal(message, onConfirm) {
@@ -180,351 +280,57 @@
             const newConfirmBtn = confirmModalConfirm.cloneNode(true);
             confirmModalConfirm.parentNode.replaceChild(newConfirmBtn, confirmModalConfirm);
 
-            newConfirmBtn.addEventListener('click', () => {
-                onConfirm();
-                closeConfirmModal();
-            }, { once: true });
+            newConfirmBtn.addEventListener('click', () => { onConfirm(); closeConfirmModal(); }, { once: true });
         }
-        
         function closeConfirmModal() {
             confirmModal.classList.add('hidden');
             confirmModal.classList.remove('flex');
         }
 
-
-        // --- Rendering Functions ---
-
-        function renderAddStationForm() {
-            addStationFormContainer.innerHTML = `
-                <form id="add-station-form" class="mb-8 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg shadow-md">
-                    <h3 class="text-lg font-bold mb-2 text-gray-800 dark:text-gray-100">Add New Station</h3>
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <input
-                            type="text"
-                            name="stationName"
-                            placeholder="Enter new station name"
-                            class="flex-grow p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-red-500 focus:outline-none"
-                            required
-                        />
-                        <button
-                            type="submit"
-                            class="bg-red-600 text-white font-bold py-2 px-4 rounded-md hover:bg-red-700 transition-colors disabled:bg-red-400">
-                            Add Station
-                        </button>
-                    </div>
-                    <p id="add-station-error" class="text-red-500 text-sm mt-2"></p>
-                </form>
-            `;
-        }
-        
-        function createCrewRowHTML(stationId, crew) {
-            const statusButtonClass = crew.status === 'On Duty' 
-                ? 'bg-green-600 hover:bg-green-700 text-white' 
-                : 'bg-gray-500 hover:bg-gray-600 text-white';
-
-            return `
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center p-3 border-b border-gray-200 dark:border-gray-700" data-crew-id="${crew.id}">
-                    <div class="md:col-span-3 font-bold text-gray-800 dark:text-gray-100">${crew.name}</div>
-                    <div class="md:col-span-2">
-                         <button
-                            data-action="toggle-status"
-                            data-station-id="${stationId}"
-                            class="w-full font-semibold py-2 px-3 rounded-md transition-colors disabled:opacity-50 ${statusButtonClass}"
-                        >
-                            ${crew.status}
-                        </button>
-                    </div>
-                    <div class="md:col-span-2">
-                        <input type="number" data-field="ems" value="${crew.emsPersonnel}" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600" min="0"/>
-                    </div>
-                    <div class="md:col-span-2">
-                        <input type="number" data-field="fire" value="${crew.firePersonnel}" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600" min="0"/>
-                    </div>
-                    <div class="md:col-span-3 flex gap-2">
-                        <button data-action="update-crew" data-station-id="${stationId}" class="w-full bg-blue-600 text-white font-semibold py-2 px-3 rounded-md hover:bg-blue-700 disabled:bg-blue-400 transition-colors">
-                            Update
-                        </button>
-                        <button data-action="delete-crew" data-station-id="${stationId}" data-crew-name="${crew.name}" class="bg-red-600 text-white font-semibold p-2 rounded-md hover:bg-red-700 transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-        
-        function renderStations() {
-            spinner.classList.add('hidden');
-            contentContainer.classList.remove('hidden');
-
-            const sortedStations = [...stationsData].sort((a, b) => a.name.localeCompare(b.name));
-            stationsContainer.innerHTML = sortedStations.map(station => {
-                const totalEMS = station.crews.filter(c => c.status === 'On Duty').reduce((sum, c) => sum + (c.emsPersonnel || 0), 0);
-                const totalFire = station.crews.filter(c => c.status === 'On Duty').reduce((sum, c) => sum + (c.firePersonnel || 0), 0);
-                
-                return `
-                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg mb-6 overflow-hidden">
-                        <div class="p-4 bg-gray-900 text-white flex justify-between items-center">
-                            <h2 class="text-2xl font-bold">${station.name}</h2>
-                            <button data-action="open-add-crew-modal" data-station-id="${station.id}" class="bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors">
-                                + Add Crew
-                            </button>
-                        </div>
-                        
-                        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-100 dark:bg-gray-700 border-b-4 border-red-600">
-                            <div class="bg-blue-100 dark:bg-blue-900 p-3 rounded-lg text-center">
-                                <p class="text-lg font-semibold text-blue-800 dark:text-blue-200">Total EMS On Duty</p>
-                                <p class="text-4xl font-bold text-blue-900 dark:text-blue-100">${totalEMS}</p>
-                            </div>
-                            <div class="bg-orange-100 dark:bg-orange-900 p-3 rounded-lg text-center">
-                                <p class="text-lg font-semibold text-orange-800 dark:text-orange-200">Total Fire On Duty</p>
-                                <p class="text-4xl font-bold text-orange-900 dark:text-orange-100">${totalFire}</p>
-                            </div>
-                        </div>
-
-                        <div class="p-2 md:p-4">
-                            <div class="hidden md:grid grid-cols-12 gap-2 font-bold text-sm text-gray-600 dark:text-gray-300 p-3">
-                                <div class="col-span-3">Crew</div>
-                                <div class="col-span-2">Status</div>
-                                <div class="col-span-2">EMS</div>
-                                <div class="col-span-2">Fire</div>
-                                <div class="col-span-3">Actions</div>
-                            </div>
-                            ${station.crews.length > 0 
-                                ? station.crews.sort((a,b) => a.name.localeCompare(b.name)).map(crew => createCrewRowHTML(station.id, crew)).join('')
-                                : '<p class="p-4 text-center text-gray-500 dark:text-gray-400">No crews assigned to this station yet.</p>'
-                            }
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // --- Event Handlers & Logic ---
-
-        async function handleAddStation(e) {
-            e.preventDefault();
-            const form = e.target;
-            const stationName = form.stationName.value.trim();
-            const button = form.querySelector('button[type="submit"]');
-            const errorP = document.getElementById('add-station-error');
-            
-            if (!stationName) {
-                errorP.textContent = 'Station name cannot be empty.';
-                return;
-            }
-
-            button.disabled = true;
-            button.textContent = 'Adding...';
-            errorP.textContent = '';
-            
-            try {
-                const stationId = `station-${Date.now()}`;
-                await db.collection("stations").doc(stationId).set({
-                    name: stationName,
-                    crews: []
-                });
-                form.reset();
-            } catch (err) {
-                console.error("Error adding station: ", err);
-                errorP.textContent = 'Failed to add station. Please try again.';
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Add Station';
-            }
-        }
-
-        async function handleAddCrew(e) {
-            e.preventDefault();
-            const form = e.target;
-            const stationId = form.dataset.stationId;
-            const newCrewName = form.crewName.value.trim();
-            const button = form.querySelector('button[type="submit"]');
-            
-            if (!newCrewName) return;
-
-            button.disabled = true;
-            button.innerHTML = 'Adding...';
-
-            const newCrew = {
-                name: newCrewName,
-                status: 'Off Duty',
-                emsPersonnel: 0,
-                firePersonnel: 0,
-                id: `crew-${Date.now()}`,
-                lastUpdated: new Date().toISOString()
-            };
-
-            const stationRef = db.collection("stations").doc(stationId);
-            try {
-                await stationRef.update({
-                    crews: firebase.firestore.FieldValue.arrayUnion(newCrew)
-                });
-                closeAddCrewModal();
-            } catch (error) {
-                console.error("Error adding crew: ", error);
-            } finally {
-                button.disabled = false;
-                button.innerHTML = 'Add Crew';
-            }
-        }
-        
-        async function handleToggleStatus(button) {
-            const stationId = button.dataset.stationId;
-            const crewRow = button.closest('[data-crew-id]');
-            const crewId = crewRow.dataset.crewId;
-
-            button.disabled = true;
-            button.textContent = '...';
-
-            // Find the current status to toggle it
-            const station = stationsData.find(s => s.id === stationId);
-            const crew = station?.crews.find(c => c.id === crewId);
-            if (!crew) {
-                console.error("Could not find crew to toggle status");
-                return; // onSnapshot will fix the button state
-            }
-
-            const newStatus = crew.status === 'On Duty' ? 'Off Duty' : 'On Duty';
-
-            const stationRef = db.collection("stations").doc(stationId);
-            try {
-                await db.runTransaction(async (transaction) => {
-                    const stationDoc = await transaction.get(stationRef);
-                    if (!stationDoc.exists) throw "Document does not exist!";
-                    
-                    const crews = stationDoc.data().crews;
-                    const crewIndex = crews.findIndex(c => c.id === crewId);
-                    if (crewIndex === -1) return;
-
-                    const updatedCrews = [...crews];
-                    updatedCrews[crewIndex] = {
-                        ...updatedCrews[crewIndex],
-                        status: newStatus,
-                        lastUpdated: new Date().toISOString()
-                    };
-                    
-                    transaction.update(stationRef, { crews: updatedCrews });
-                });
-            } catch (error) {
-                console.error("Error toggling status: ", error);
-            }
-            // No finally block, onSnapshot re-render will re-enable the button
-        }
-
-
-        async function handleUpdateCrew(button) {
-            const stationId = button.dataset.stationId;
-            const crewRow = button.closest('[data-crew-id]');
-            const crewId = crewRow.dataset.crewId;
-
-            button.disabled = true;
-            button.textContent = '...';
-
-            const ems = parseInt(crewRow.querySelector('[data-field="ems"]').value, 10) || 0;
-            const fire = parseInt(crewRow.querySelector('[data-field="fire"]').value, 10) || 0;
-
-            const stationRef = db.collection("stations").doc(stationId);
-            try {
-                 await db.runTransaction(async (transaction) => {
-                    const stationDoc = await transaction.get(stationRef);
-                    if (!stationDoc.exists) throw "Document does not exist!";
-                    
-                    const crews = stationDoc.data().crews;
-                    const crewIndex = crews.findIndex(c => c.id === crewId);
-                    if (crewIndex === -1) return;
-
-                    const updatedCrews = [...crews];
-                    updatedCrews[crewIndex] = {
-                        ...updatedCrews[crewIndex],
-                        emsPersonnel: ems,
-                        firePersonnel: fire,
-                        lastUpdated: new Date().toISOString()
-                    };
-                    
-                    transaction.update(stationRef, { crews: updatedCrews });
-                });
-            } catch (error) {
-                console.error("Error updating crew: ", error);
-            }
-            // The onSnapshot will handle re-enabling the button by re-rendering
-        }
-
-        async function handleDeleteCrew(button) {
-            const stationId = button.dataset.stationId;
-            const crewName = button.dataset.crewName;
-            const crewRow = button.closest('[data-crew-id]');
-            const crewId = crewRow.dataset.crewId;
-            
-            showConfirmModal(`Are you sure you want to delete ${crewName}?`, async () => {
-                const stationRef = db.collection("stations").doc(stationId);
-                try {
-                    await db.runTransaction(async (transaction) => {
-                        const stationDoc = await transaction.get(stationRef);
-                        if (!stationDoc.exists) throw "Document does not exist!";
-                        
-                        const updatedCrews = stationDoc.data().crews.filter(c => c.id !== crewId);
-                        transaction.update(stationRef, { crews: updatedCrews });
-                    });
-                } catch (error) {
-                    console.error("Error deleting crew: ", error);
-                }
-            });
-        }
-
-
-        // --- App Initialization ---
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                if (!firebaseConfig.apiKey) {
-                    showError("Firebase configuration is missing. Please add your Firebase project configuration.");
-                    return;
-                }
-
                 firebase.initializeApp(firebaseConfig);
-               
                 db = firebase.firestore();
                 auth = firebase.auth();
-                
                 await auth.signInAnonymously();
-                
-                renderAddStationForm();
-                listenToFirestore();
-
+                db.collection("stations").onSnapshot(snapshot => {
+                    const stations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    renderStations(stations);
+                }, err => {
+                    console.error("Error fetching stations:", err);
+                    showError("Could not fetch data from the database. This is likely a permissions issue.");
+                });
             } catch (e) {
                 console.error("Firebase initialization error:", e);
-                showError("Failed to initialize the application. Check your Firebase configuration and security rules.");
+                showError("Failed to initialize the application.");
             }
         });
 
-        // --- Global Event Listeners ---
+        addStationForm.addEventListener('submit', handleAddStation);
+
         document.addEventListener('submit', (e) => {
-            if (e.target.id === 'add-station-form') handleAddStation(e);
             if (e.target.id === 'add-crew-form') handleAddCrew(e);
         });
 
         document.addEventListener('click', (e) => {
-            const action = e.target.dataset.action;
-            if (!action) return;
+            const button = e.target.closest('button');
+            if (!button) return;
+            const action = button.dataset.action;
 
             if (action === 'open-add-crew-modal') {
-                const stationId = e.target.dataset.stationId;
-                const station = stationsData.find(s => s.id === stationId);
-                if (station) openAddCrewModal(station);
+                openAddCrewModal(button.dataset.stationId);
+            } else if (action === 'delete-station') {
+                showConfirmModal(`Permanently delete ${button.dataset.stationName}?`, () => {
+                    db.collection("stations").doc(button.dataset.stationId).delete();
+                });
+            } else if (['toggle-status', 'increment', 'decrement', 'delete-crew'].includes(action)) {
+                handleCrewAction(e);
             }
-            if (action === 'close-add-crew-modal') closeAddCrewModal();
-            if (action === 'toggle-status') handleToggleStatus(e.target);
-            if (action === 'update-crew') handleUpdateCrew(e.target);
-            if (action === 'delete-crew') handleDeleteCrew(e.target);
         });
-        
-        // Modal closing listeners
+
         addCrewModalClose.addEventListener('click', closeAddCrewModal);
         confirmModalCancel.addEventListener('click', closeConfirmModal);
-
     </script>
 </body>
 </html>
-
 
