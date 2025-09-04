@@ -218,14 +218,21 @@
         }
         
         function createCrewRowHTML(stationId, crew) {
+            const statusButtonClass = crew.status === 'On Duty' 
+                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                : 'bg-gray-500 hover:bg-gray-600 text-white';
+
             return `
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center p-3 border-b border-gray-200 dark:border-gray-700" data-crew-id="${crew.id}">
                     <div class="md:col-span-3 font-bold text-gray-800 dark:text-gray-100">${crew.name}</div>
                     <div class="md:col-span-2">
-                        <select data-field="status" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600">
-                            <option ${crew.status === 'On Duty' ? 'selected' : ''}>On Duty</option>
-                            <option ${crew.status === 'Off Duty' ? 'selected' : ''}>Off Duty</option>
-                        </select>
+                         <button
+                            data-action="toggle-status"
+                            data-station-id="${stationId}"
+                            class="w-full font-semibold py-2 px-3 rounded-md transition-colors disabled:opacity-50 ${statusButtonClass}"
+                        >
+                            ${crew.status}
+                        </button>
                     </div>
                     <div class="md:col-span-2">
                         <input type="number" data-field="ems" value="${crew.emsPersonnel}" class="w-full p-2 border rounded-md bg-white dark:bg-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600" min="0"/>
@@ -362,6 +369,50 @@
                 button.innerHTML = 'Add Crew';
             }
         }
+        
+        async function handleToggleStatus(button) {
+            const stationId = button.dataset.stationId;
+            const crewRow = button.closest('[data-crew-id]');
+            const crewId = crewRow.dataset.crewId;
+
+            button.disabled = true;
+            button.textContent = '...';
+
+            // Find the current status to toggle it
+            const station = stationsData.find(s => s.id === stationId);
+            const crew = station?.crews.find(c => c.id === crewId);
+            if (!crew) {
+                console.error("Could not find crew to toggle status");
+                return; // onSnapshot will fix the button state
+            }
+
+            const newStatus = crew.status === 'On Duty' ? 'Off Duty' : 'On Duty';
+
+            const stationRef = db.collection("stations").doc(stationId);
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const stationDoc = await transaction.get(stationRef);
+                    if (!stationDoc.exists) throw "Document does not exist!";
+                    
+                    const crews = stationDoc.data().crews;
+                    const crewIndex = crews.findIndex(c => c.id === crewId);
+                    if (crewIndex === -1) return;
+
+                    const updatedCrews = [...crews];
+                    updatedCrews[crewIndex] = {
+                        ...updatedCrews[crewIndex],
+                        status: newStatus,
+                        lastUpdated: new Date().toISOString()
+                    };
+                    
+                    transaction.update(stationRef, { crews: updatedCrews });
+                });
+            } catch (error) {
+                console.error("Error toggling status: ", error);
+            }
+            // No finally block, onSnapshot re-render will re-enable the button
+        }
+
 
         async function handleUpdateCrew(button) {
             const stationId = button.dataset.stationId;
@@ -371,7 +422,6 @@
             button.disabled = true;
             button.textContent = '...';
 
-            const status = crewRow.querySelector('[data-field="status"]').value;
             const ems = parseInt(crewRow.querySelector('[data-field="ems"]').value, 10) || 0;
             const fire = parseInt(crewRow.querySelector('[data-field="fire"]').value, 10) || 0;
 
@@ -379,9 +429,7 @@
             try {
                  await db.runTransaction(async (transaction) => {
                     const stationDoc = await transaction.get(stationRef);
-                    if (!stationDoc.exists) {
-                        throw "Document does not exist!";
-                    }
+                    if (!stationDoc.exists) throw "Document does not exist!";
                     
                     const crews = stationDoc.data().crews;
                     const crewIndex = crews.findIndex(c => c.id === crewId);
@@ -390,7 +438,6 @@
                     const updatedCrews = [...crews];
                     updatedCrews[crewIndex] = {
                         ...updatedCrews[crewIndex],
-                        status: status,
                         emsPersonnel: ems,
                         firePersonnel: fire,
                         lastUpdated: new Date().toISOString()
@@ -400,9 +447,8 @@
                 });
             } catch (error) {
                 console.error("Error updating crew: ", error);
-            } finally {
-                 // The onSnapshot will handle re-enabling the button by re-rendering
             }
+            // The onSnapshot will handle re-enabling the button by re-rendering
         }
 
         async function handleDeleteCrew(button) {
@@ -436,13 +482,11 @@
                     return;
                 }
 
-                // Initialize Firebase. `firebase` is now a global object from the script tags.
                 firebase.initializeApp(firebaseConfig);
                
                 db = firebase.firestore();
                 auth = firebase.auth();
                 
-                // Sign in anonymously to satisfy security rules that require authentication
                 await auth.signInAnonymously();
                 
                 renderAddStationForm();
@@ -470,6 +514,7 @@
                 if (station) openAddCrewModal(station);
             }
             if (action === 'close-add-crew-modal') closeAddCrewModal();
+            if (action === 'toggle-status') handleToggleStatus(e.target);
             if (action === 'update-crew') handleUpdateCrew(e.target);
             if (action === 'delete-crew') handleDeleteCrew(e.target);
         });
@@ -481,4 +526,5 @@
     </script>
 </body>
 </html>
+
 
